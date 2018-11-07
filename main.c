@@ -81,11 +81,11 @@
 #include <msp430F5529.h>
 
 float realTemp;
-float desiredTemp;
+float desiredTemp = 10;
 
-unsigned int temp;
-volatile float temperatureDegC;
-volatile float temperatureDegF;
+//unsigned int temp;
+//volatile float temperatureDegC;
+//volatile float temperatureDegF;
 
 int main(void)
 {
@@ -93,7 +93,12 @@ int main(void)
   REFCTL0 &= ~REFMSTR;                      // Reset REFMSTR to hand over control to
                                             // ADC12_A ref control registers
   //bit 4.1 will be PWM output
-  P4SEL |= BIT1;
+  P4SEL &= ~BIT1;   //set 4.0 to be GPIO
+  P4DIR |= BIT1;    //set 4.0 to be output
+
+  //port 6.0 is analog input 0
+  P6DIR &= ~BIT0;   //set 6.0 to be input
+  P6SEL |= BIT0;    //set 6.0 to be A0 (input of A to D)
 
 
   ADC12CTL0 = ADC12SHT0_8 + ADC12REFON + ADC12ON;
@@ -106,7 +111,7 @@ int main(void)
 
 
   //Hardware PWM stuff
-  TA0CCTL0 = CCIE;                        // CCR0 interrupt enabled for TA0
+  //TA0CCTL0 = CCIE;                        // CCR0 interrupt enabled for TA0
   TA1CCTL1 = CCIE;
   TA1CCR0 = 262;                            //Set the period in the Timer A Capture/Compare 0 register to 1000 us.
   TA1CCTL1 = OUTMOD_7;
@@ -161,8 +166,8 @@ __interrupt void USCI0RX_ISR(void){
 
 }
 
-#pragma vector=TIMER1_A0_VECTOR
-__interrupt void Timer_A0 (void)
+#pragma vector=TIMER1_A1_VECTOR
+__interrupt void Timer_A1 (void)
 {
 
     //When CCR1 overflows, set low
