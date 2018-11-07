@@ -81,7 +81,7 @@
 #include <msp430F5529.h>
 
 float realTemp;
-float desiredTemp = 10;
+float desiredTemp = 10; //default to be a very low temp (for testing)
 
 //unsigned int temp;
 //volatile float temperatureDegC;
