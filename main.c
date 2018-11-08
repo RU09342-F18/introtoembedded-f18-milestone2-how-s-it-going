@@ -105,6 +105,8 @@ int main(void)
   ADC12CTL0 |= ADC12ENC;
   ADC12MCTL0 |= ADC12SREF_0;
 
+
+
   ADC12CTL0 = ADC12SHT0_8 + ADC12REFON + ADC12ON;
                                             // Internal ref = 1.5V
   ADC12CTL1 = ADC12SHP;                     // enable sample timer
