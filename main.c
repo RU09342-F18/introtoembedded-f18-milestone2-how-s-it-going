@@ -100,14 +100,16 @@ int main(void)
   P6DIR &= ~BIT0;   //set 6.0 to be input
   P6SEL |= BIT0;    //set 6.0 to be A0 (input of A to D)
 
+  ADC12IE |= BIT0;
+  ADC12MCTL0 = ADC12INCH_0;
+  ADC12CTL0 |= ADC12ENC;
+  ADC12MCTL0 |= ADC12SREF_0;
 
   ADC12CTL0 = ADC12SHT0_8 + ADC12REFON + ADC12ON;
                                             // Internal ref = 1.5V
   ADC12CTL1 = ADC12SHP;                     // enable sample timer
   //ADC12MCTL0 = ADC12SREF_1 + ADC12INCH_10;  // ADC i/p ch A10 = temp sense i/p
-  ADC12IE = 0x001;                          // ADC_IFG upon conv result-ADCMEMO
   __delay_cycles(100);                       // delay to allow Ref to settle
-  ADC12CTL0 |= ADC12ENC;
 
 
   //Hardware PWM stuff
@@ -121,16 +123,16 @@ int main(void)
 
   while(1)
   {
-    ADC12CTL0 &= ~ADC12SC;
+    //ADC12CTL0 &= ~ADC12SC;
     ADC12CTL0 |= ADC12SC;                   // Sampling and conversion start
 
     //Vo = 6.25 mV/C + 424 mV
 
 
-    __bis_SR_register(LPM4_bits + GIE);     // LPM0 with interrupts enabled
+    __bis_SR_register(LPM0_bits + GIE);     // LPM0 with interrupts enabled
     __no_operation();
 
-    __no_operation();                       // SET BREAKPOINT HERE
+    //__no_operation();                       // SET BREAKPOINT HERE
   }
 }
 
