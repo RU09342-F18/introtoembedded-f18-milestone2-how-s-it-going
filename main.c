@@ -100,10 +100,10 @@ int main(void)
   P6DIR &= ~BIT0;   //set 6.0 to be input
   P6SEL |= BIT0;    //set 6.0 to be A0 (input of A to D)
 
-  ADC12IE |= BIT0;
-  ADC12MCTL0 = ADC12INCH_0;
-  ADC12CTL0 |= ADC12ENC;
-  ADC12MCTL0 |= ADC12SREF_0;
+  ADC12IE |= BIT0;  //enable interrupts for ADC
+  ADC12MCTL0 = ADC12INCH_0; //select input channel
+  ADC12CTL0 |= ADC12ENC;    //enable conversion
+  ADC12MCTL0 |= ADC12SREF_0;    //setting analog reference voltage
 
 
 
