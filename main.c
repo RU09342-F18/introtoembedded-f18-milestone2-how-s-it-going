@@ -120,7 +120,7 @@ int main(void)
   TA1CCR0 = 262;                            //Set the period in the Timer A Capture/Compare 0 register to 1000 us.
   TA1CCTL1 = OUTMOD_7;
   TA1CCR1 = 131; //The initial period in microseconds that the power is ON. It's half the time, which translates to a 50% duty cycle.
-  TA0CTL = TASSEL_2 + MC_1 + ID_2 + TAIE; //TASSEL_2 selects SMCLK as the clock source, and MC_1 tells it to count up to the value in TA0CCR0.
+  TA1CTL = TASSEL_2 + MC_1 + ID_2 + TAIE; //TASSEL_2 selects SMCLK as the clock source, and MC_1 tells it to count up to the value in TA0CCR0.
   //__bis_SR_register(LPM0_bits); //Switch to low power mode 0.
 
   while(1)
