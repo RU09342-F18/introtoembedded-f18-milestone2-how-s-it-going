@@ -119,21 +119,16 @@ int main(void)
   ADC12MCTL0 |= ADC12SREF_0;    //setting analog reference voltage
   ADC12CTL0 = ADC12SHT0_8 + ADC12ON;
   ADC12CTL1 = ADC12SHP;                     // enable sample timer
-<<<<<<< Updated upstream
-  //ADC12MCTL0 = ADC12SREF_1 + ADC12INCH_10;  // ADC i/p ch A10 = temp sense i/p
   __delay_cycles(100);                       // delay to allow Ref to settle
 
 
   //Hardware PWM stuff
-  //TA0CCTL0 = CCIE;                        // CCR0 interrupt enabled for TA0
   TA1CCTL1 = CCIE;
   TA1CCR0 = 262;                            //Set the period in the Timer A Capture/Compare 0 register to 1000 us.
   TA1CCTL1 = OUTMOD_7;
   TA1CCR1 = 131; //The initial period in microseconds that the power is ON. It's half the time, which translates to a 50% duty cycle.
   TA1CTL = TASSEL_2 + MC_1 + ID_2 + TAIE; //TASSEL_2 selects SMCLK as the clock source, and MC_1 tells it to count up to the value in TA0CCR0.
-  //__bis_SR_register(LPM0_bits); //Switch to low power mode 0.
-=======
->>>>>>> Stashed changes
+
 
   //polling for ADC values
   while(1)
