@@ -96,9 +96,9 @@ int main(void)
   REFCTL0 &= ~REFMSTR;                      // Reset REFMSTR to hand over control to
                                             // ADC12_A ref control registers
   //bit 4.1 will be PWM output
-  P4REN = BIT1;
-  P4SEL &= ~BIT1;   //set 4.0 to be GPIO
-  P4DIR |= BIT1;    //set 4.0 to be output
+  //P4REN = BIT1;
+  P4SEL &= ~BIT1;   //set 4.1 to be GPIO
+  P4DIR |= BIT1;    //set 4.1 to be output
 
   //port 6.0 is analog input 0
   P6DIR &= ~BIT0;   //set 6.0 to be input
@@ -113,12 +113,18 @@ int main(void)
   TA1CTL = TASSEL_2 + MC_1 + ID_2 + TAIE; //TASSEL_2 selects SMCLK as the clock source, and MC_1 tells it to count up to the value in TA0CCR0.
 
   //set up ADC
-  ADC12IE |= BIT0;  //enable interrupts for ADC
+ /* ADC12IE |= BIT0;  //enable interrupts for ADC
   ADC12MCTL0 = ADC12INCH_0; //select input channel
   ADC12CTL0 |= ADC12ENC;    //enable conversion
   ADC12MCTL0 |= ADC12SREF_0;    //setting analog reference voltage
   ADC12CTL0 = ADC12SHT0_8 + ADC12ON;
-  ADC12CTL1 = ADC12SHP;                     // enable sample timer
+  ADC12CTL1 = ADC12SHP;                     // enable sample timer*/
+
+
+  ADC12CTL0 = ADC12SHT02 + ADC12ON;         // Sampling time, ADC12 on
+  ADC12CTL1 = ADC12SHP;                     // Use sampling timer
+  ADC12IE = 0x01;                           // Enable interrupt
+  ADC12CTL0 |= ADC12ENC;
   __delay_cycles(100);                       // delay to allow Ref to settle
 
 
@@ -134,14 +140,51 @@ int main(void)
   while(1)
   {
     ADC12CTL0 |= ADC12SC;                   // Sampling and conversion start
-    __delay_cycles(100);
-    while(!(ADC12IFG & ADC12IFG0));   //wait for sample to be ready
+    //__delay_cycles(100);
+    //while(!(ADC12IFG & ADC12IFG0));   //wait for sample to be ready
+    //setPWM(); //now in the interrupt
+
+    __bis_SR_register(LPM0_bits + GIE);     // LPM0 with interrupts enabled
+    __no_operation();
+  }
+}
+
+#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
+#pragma vector = ADC12_VECTOR
+__interrupt void ADC12_ISR(void)
+#elif defined(__GNUC__)
+void __attribute__ ((interrupt(ADC12_VECTOR))) ADC12_ISR (void)
+#else
+#error Compiler not supported!
+#endif
+{
+  switch(__even_in_range(ADC12IV,34))
+  {
+  case  0: break;                           // Vector  0:  No interrupt
+  case  2: break;                           // Vector  2:  ADC overflow
+  case  4: break;                           // Vector  4:  ADC timing overflow
+  case  6:                                  // Vector  6:  ADC12IFG0
     setPWM();
 
-    //__bis_SR_register(LPM0_bits + GIE);     // LPM0 with interrupts enabled
-    //__no_operation();
-  };
+    __bic_SR_register_on_exit(LPM0_bits);   // Exit active CPU
+  case  8: break;                           // Vector  8:  ADC12IFG1
+  case 10: break;                           // Vector 10:  ADC12IFG2
+  case 12: break;                           // Vector 12:  ADC12IFG3
+  case 14: break;                           // Vector 14:  ADC12IFG4
+  case 16: break;                           // Vector 16:  ADC12IFG5
+  case 18: break;                           // Vector 18:  ADC12IFG6
+  case 20: break;                           // Vector 20:  ADC12IFG7
+  case 22: break;                           // Vector 22:  ADC12IFG8
+  case 24: break;                           // Vector 24:  ADC12IFG9
+  case 26: break;                           // Vector 26:  ADC12IFG10
+  case 28: break;                           // Vector 28:  ADC12IFG11
+  case 30: break;                           // Vector 30:  ADC12IFG12
+  case 32: break;                           // Vector 32:  ADC12IFG13
+  case 34: break;                           // Vector 34:  ADC12IFG14
+  default: break;
+  }
 }
+
 
 void setPWM()
 {
