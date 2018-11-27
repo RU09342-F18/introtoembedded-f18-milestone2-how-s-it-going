@@ -89,9 +89,10 @@
 #include <math.h>
 
 float realTemp;
-float desiredTemp = 25; //initialization default
+float desiredTemp = 20; //initialization default
 float adcReading;
 int adcReady = 1;
+int ccr;
 
 void setPWM();
 
@@ -110,13 +111,16 @@ int main(void)
   P6SEL |= BIT0;                            //set 6.0 to be A0 (input of A to D)
 
   //UART Setup*******************************************************************************
-  P3SEL |= BIT3 + BIT4;                     //enable UART for these pins
-  UCA1CTLW0 |= UCSSEL__SMCLK;               // CLK = SMCLK
+  P4SEL |= BIT5 + BIT4;                     //enable UART for these pins
+  UCA1CTL1 |= UCSWRST;                      // **Put state machine in reset**
+  UCA1CTL1 |= UCSSEL_2;
+  //UCA1CTLW0 |= UCSSEL__SMCLK;               // CLK = SMCLK
   // Use Table 24-5 in Family User Guide for BAUD rate calculation
   UCA1BR0 = 104;                            // sets baud rate to 9600 (16000000/16/9600)
   UCA1BR1 = 0x00;
   UCA1MCTL |= UCOS16 | UCBRF_3 | UCBRS_0;
-  UCA1CTLW0 &= ~UCSWRST;                    // Initialize eUSCI
+  //UCA1CTLW0 &= ~UCSWRST;                    // Initialize eUSCI
+  UCA1CTL1 &= ~UCSWRST;                     // **Initialize USCI state machine**
   UCA1IE |= UCRXIE;                         // Enable USCI_A0 RX interrupt
   UCA1TXBUF = 0;                            //set RX buffer to 0 for testing purposes
 
@@ -203,20 +207,22 @@ void setPWM()
 
     realTemp = ((analogVoltage - 0.424) / 0.00625);     //convert analog voltage to temperature
 
-    while (!(UCA1IFG & UCTXIFG));                       //if TX buffer ready, send temp reading out thru TX
-    UCA1TXBUF = realTemp;
-
     float difference = realTemp - desiredTemp;          //determine difference between real and desired temp
 
     float dc_increase = difference;                     //increasing/decreasing 1% DC for every degree C off
 
     if(difference > 2)                                  //if temp is too high
-    TA1CCR1 += 262/dc_increase;                         //increase DC
+        ccr += 262/dc_increase;                         //increase DC
     else if(difference < -2)                            //if temp is too low
-        TA1CCR1 += 262/dc_increase;                     //decrease CCR1
+        ccr += 262/dc_increase;                     //decrease CCR1
 
-    if(TA1CCR1 > 261)                                   //ensure CCR1 never gets about 261 (262 is CCR0)
-        TA1CCR1 = 261;
+    if(ccr < 0)
+        TA1CCR1 = 0;
+    else
+        TA1CCR1 = ccr;
+
+    if(TA1CCR1 > 250)                                   //ensure CCR1 never gets about 261 (262 is CCR0)
+        TA1CCR1 = 250;
 
 }
 
@@ -232,6 +238,8 @@ __interrupt void USCI_A1_ISR(void)
     UCA1TXBUF = UCA1RXBUF;                  // TX -> RXed character
     break;*/
     desiredTemp = UCA1RXBUF;
+    while (!(UCA1IFG & UCTXIFG));                       //if TX buffer ready, send temp reading out thru TX
+    UCA1TXBUF = realTemp;
     break;
   case 4:break;                             // Vector 4 - TXIFG
   default: break;
