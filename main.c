@@ -116,9 +116,12 @@ int main(void)
   UCA1CTL1 |= UCSSEL_2;
   //UCA1CTLW0 |= UCSSEL__SMCLK;               // CLK = SMCLK
   // Use Table 24-5 in Family User Guide for BAUD rate calculation
-  UCA1BR0 = 104;                            // sets baud rate to 9600 (16000000/16/9600)
+  UCA1BR0 = 6;                              // 1MHz 9600 (see User's Guide)
+  UCA1BR1 = 0;                              // 1MHz 9600
+  UCA1MCTL = UCBRS_0 + UCBRF_13 + UCOS16;   // Modln UCBRSx=0, UCBRFx=0,
+  /*UCA1BR0 = 104;                            // sets baud rate to 9600 (16000000/16/9600)
   UCA1BR1 = 0x00;
-  UCA1MCTL |= UCOS16 | UCBRF_3 | UCBRS_0;
+  UCA1MCTL |= UCOS16 | UCBRF_3 | UCBRS_0;*/
   //UCA1CTLW0 &= ~UCSWRST;                    // Initialize eUSCI
   UCA1CTL1 &= ~UCSWRST;                     // **Initialize USCI state machine**
   UCA1IE |= UCRXIE;                         // Enable USCI_A0 RX interrupt
