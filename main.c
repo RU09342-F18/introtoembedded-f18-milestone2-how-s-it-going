@@ -1,3 +1,169 @@
+/*
+ * Milestone 2
+ * Scott Wood and David Sheppard
+ *
+ */
+
+
+#include <msp430F5529.h>
+#include <math.h>
+
+float realTemp;
+float desiredTemp = 20; //initialization default
+float adcReading;
+int adcReady = 1;
+int ccr;
+
+void setPWM();
+
+int main(void)
+{
+  WDTCTL = WDTPW + WDTHOLD;                 // Stop WDT
+  REFCTL0 &= ~REFMSTR;                      // Reset REFMSTR to hand over control to
+                                            // ADC12_A ref control registers
+
+  //bit 2.7 will be PWM output***************************************************************
+  P2SEL &= ~BIT7;                           //set 2.7 to be GPIO
+  P2DIR |= BIT7;                            //set 2.7 to be output
+
+  //port 6.0 is analog input 0***************************************************************
+  P6DIR &= ~BIT0;                           //set 6.0 to be input
+  P6SEL |= BIT0;                            //set 6.0 to be A0 (input of A to D)
+
+  //UART Setup*******************************************************************************
+  P4SEL |= BIT5 + BIT4;                     //enable UART for these pins
+  UCA1CTL1 |= UCSWRST;                      // **Put state machine in reset**
+  UCA1CTL1 |= UCSSEL_2;
+  // Use Table 24-5 in Family User Guide for BAUD rate calculation
+  UCA1BR0 = 6;                              // 1MHz 9600 (see User's Guide)
+  UCA1BR1 = 0;                              // 1MHz 9600
+  UCA1MCTL = UCBRS_0 + UCBRF_13 + UCOS16;   // Modln UCBRSx=0, UCBRFx=0,
+  UCA1CTL1 &= ~UCSWRST;                     // **Initialize USCI state machine**
+  UCA1IE |= UCRXIE;                         // Enable USCI_A0 RX interrupt
+  UCA1TXBUF = 0;                            //set RX buffer to 0 for testing purposes
+
+  //PWM stuff*********************************************************************************
+  TA1CCTL1 = CCIE;                          // CCR1 interrupt enabled for TA1
+  TA1CCR0 = 262;                            //Set the period in the Timer A Capture/Compare 0 register to 1000 us.
+  TA1CCR1 = 131;                            //The initial period in microseconds that the power is ON. It's half the time, which translates to a 50% duty cycle.
+  TA1CTL = TASSEL_2 + MC_1 + ID_2 + TAIE;   //TASSEL_2 selects SMCLK as the clock source, and MC_1 tells it to count up to the value in TA0CCR0.
+
+  ADC12CTL0 = ADC12SHT02 + ADC12ON;         // Sampling time, ADC12 on
+  ADC12CTL1 = ADC12SHP;                     // Use sampling timer
+  ADC12IE = 0x01;                           // Enable interrupt
+  ADC12CTL0 |= ADC12ENC;                    //Enable conversion
+
+  __bis_SR_register(/*LPMO + */GIE);        // LPM0 with interrupts enabled
+
+  //polling for ADC values********************************************************************
+  while(1)
+  {
+    ADC12CTL0 |= ADC12SC;                   // Sampling and conversion start
+    while(adcReady == 0){};                 //run this loop while waiting for ADC to finish conversion
+    setPWM();                               //set PWM values to change duty cycle
+    adcReady = 0;                           //adc no longer ready
+
+  }
+}
+
+#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
+#pragma vector = ADC12_VECTOR
+__interrupt void ADC12_ISR(void)
+#elif defined(__GNUC__)
+void __attribute__ ((interrupt(ADC12_VECTOR))) ADC12_ISR (void)
+#else
+#error Compiler not supported!
+#endif
+{
+    adcReady = 1;
+    adcReading = ADC12MEM0;
+
+    __bic_SR_register_on_exit(LPM0_bits);   // Exit active CPU
+}
+
+
+void setPWM()
+{
+
+    //PTAT equation: Vo = 6.25 mV/C + 424 mV
+    //therefore, Temp = (Vo - 0.424) / 0.00625
+
+    float analogVoltage = adcReading * (3.3 / 4096);    //convert digital reading back to analog voltage value
+
+    realTemp = ((analogVoltage - 0.424) / 0.00625);     //convert analog voltage to temperature
+
+    float difference = realTemp - desiredTemp;          //determine difference between real and desired temp
+
+    if(difference > 1)                                  //if temp is too high
+        ccr += (difference);                         //increase DC
+    else if(difference < -1)                            //if temp is too low
+        ccr += (difference);                     //decrease CCR1
+
+    if(ccr < 0)                 //ensure ccr never gets negative
+    {
+        ccr = 0;
+    }
+    else if(TA1CCR1 > 250){     //ensure CCR1 never gets about 261 (262 is CCR0)
+        ccr = 250;
+    }
+
+    TA1CCR1 = ccr;
+
+}
+
+#pragma vector=USCI_A1_VECTOR
+__interrupt void USCI_A1_ISR(void)
+
+{
+  switch(__even_in_range(UCA1IV,4))
+  {
+  case 0:break;                             // Vector 0 - no interrupt
+  case 2:                                   // Vector 2 - RXIFG
+    // Special case: if UART input is 0x00, we want it to send back the temperature reading
+    //instead of setting desired temp
+    if(UCA1RXBUF == 0x00){
+        while (!(UCA1IFG & UCTXIFG));                       //if TX buffer ready, send temp reading out thru TX
+        UCA1TXBUF = realTemp;
+    }
+    //if UART input is not special case of 0x00, set desired temp
+    else
+        desiredTemp = UCA1RXBUF;
+    break;
+  case 4:break;                             // Vector 4 - TXIFG
+  default: break;
+  }
+}
+
+
+#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
+#pragma vector=TIMER1_A1_VECTOR
+__interrupt void TIMER1_A1_ISR(void)
+#elif defined(__GNUC__)
+void __attribute__ ((interrupt(TIMER1_A1_VECTOR))) TIMER1_A1_ISR (void)
+#else
+#error Compiler not supported!
+#endif
+{
+  switch(__even_in_range(TA1IV,14)) //testing timer interrupt vector
+  {
+    case  0: break;                          // No interrupt
+    case  2: P2OUT &= ~BIT7;                 //if CCR1 is reached, set low
+             break;
+    case  4: break;                          // CCR2 not used
+    case  6: break;                          // reserved
+    case  8: break;                          // reserved
+    case 10: break;                          // reserved
+    case 12: break;                          // reserved
+    case 14: P2OUT |= BIT7;                  // if CCR0 overflows, set high
+             break;
+    default: break;
+  }
+  TA1IV &= ~TA1IV_TA1IFG; // Clear the Timer interrupt Flag
+}
+
+
+
+
 /* --COPYRIGHT--,BSD_EX
  * Copyright (c) 2012, Texas Instruments Incorporated
  * All rights reserved.
@@ -77,207 +243,3 @@
 //   Dec. 2012
 //   Built with IAR Embedded Workbench Version: 5.51.1 & Code Composer Studio V5.2.1
 //******************************************************************************
-
-/*
- * Milestone 2
- * Scott Wood and David Sheppard
- *
- */
-
-
-#include <msp430F5529.h>
-#include <math.h>
-
-float realTemp;
-float desiredTemp = 20; //initialization default
-float adcReading;
-int adcReady = 1;
-int ccr;
-
-void setPWM();
-
-int main(void)
-{
-  WDTCTL = WDTPW + WDTHOLD;                 // Stop WDT
-  REFCTL0 &= ~REFMSTR;                      // Reset REFMSTR to hand over control to
-                                            // ADC12_A ref control registers
-
-  //bit 2.7 will be PWM output***************************************************************
-  P2SEL &= ~BIT7;                           //set 2.7 to be GPIO
-  P2DIR |= BIT7;                            //set 2.7 to be output
-
-  //port 6.0 is analog input 0***************************************************************
-  P6DIR &= ~BIT0;                           //set 6.0 to be input
-  P6SEL |= BIT0;                            //set 6.0 to be A0 (input of A to D)
-
-  //UART Setup*******************************************************************************
-  P4SEL |= BIT5 + BIT4;                     //enable UART for these pins
-  UCA1CTL1 |= UCSWRST;                      // **Put state machine in reset**
-  UCA1CTL1 |= UCSSEL_2;
-  //UCA1CTLW0 |= UCSSEL__SMCLK;               // CLK = SMCLK
-  // Use Table 24-5 in Family User Guide for BAUD rate calculation
-  UCA1BR0 = 6;                              // 1MHz 9600 (see User's Guide)
-  UCA1BR1 = 0;                              // 1MHz 9600
-  UCA1MCTL = UCBRS_0 + UCBRF_13 + UCOS16;   // Modln UCBRSx=0, UCBRFx=0,
-  /*UCA1BR0 = 104;                            // sets baud rate to 9600 (16000000/16/9600)
-  UCA1BR1 = 0x00;
-  UCA1MCTL |= UCOS16 | UCBRF_3 | UCBRS_0;*/
-  //UCA1CTLW0 &= ~UCSWRST;                    // Initialize eUSCI
-  UCA1CTL1 &= ~UCSWRST;                     // **Initialize USCI state machine**
-  UCA1IE |= UCRXIE;                         // Enable USCI_A0 RX interrupt
-  UCA1TXBUF = 0;                            //set RX buffer to 0 for testing purposes
-
-  //PWM stuff*********************************************************************************
-  TA1CCTL1 = CCIE;                          // CCR1 interrupt enabled for TA1
-  TA1CCR0 = 262;                            //Set the period in the Timer A Capture/Compare 0 register to 1000 us.
-  //TA1CCTL1 = OUTMOD_7;
-  TA1CCR1 = 131;                            //The initial period in microseconds that the power is ON. It's half the time, which translates to a 50% duty cycle.
-  TA1CTL = TASSEL_2 + MC_1 + ID_2 + TAIE;   //TASSEL_2 selects SMCLK as the clock source, and MC_1 tells it to count up to the value in TA0CCR0.
-
-  ADC12CTL0 = ADC12SHT02 + ADC12ON;         // Sampling time, ADC12 on
-  ADC12CTL1 = ADC12SHP;                     // Use sampling timer
-  ADC12IE = 0x01;                           // Enable interrupt
-  ADC12CTL0 |= ADC12ENC;                    //Enable conversion
-
-  //Timer Setup for Software PWM**************************************************************
-  TA1CCTL1 = CCIE;
-  TA1CCR0 = 262;                            //Set the period in the Timer A Capture/Compare 0 register to 1000 us.
-  TA1CCR1 = 131;                            //The initial period in microseconds that the power is ON. It's half the time, which translates to a 50% duty cycle.
-  TA1CTL = TASSEL_2 + MC_1 + ID_2 + TACLR + TAIE;   //TASSEL_2 selects SMCLK as the clock source, and MC_1 tells it to count up to the value in TA0CCR0.
-
-  __bis_SR_register(/*LPMO + */GIE);        // LPM0 with interrupts enabled
-
-  //polling for ADC values********************************************************************
-  while(1)
-  {
-    ADC12CTL0 |= ADC12SC;                   // Sampling and conversion start
-    //while(!(ADC12IFG & ADC12IFG0));       //wait for sample to be ready
-    while(adcReady == 0){};                 //run this loop while waiting for ADC to finish conversion
-    setPWM();                               //set PWM values to change duty cycle
-    adcReady = 0;                           //adc no longer ready
-
-  }
-}
-
-#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
-#pragma vector = ADC12_VECTOR
-__interrupt void ADC12_ISR(void)
-#elif defined(__GNUC__)
-void __attribute__ ((interrupt(ADC12_VECTOR))) ADC12_ISR (void)
-#else
-#error Compiler not supported!
-#endif
-{
-    adcReady = 1;
-    adcReading = ADC12MEM0;
-  /*switch(__even_in_range(ADC12IV,34))
-  {
-  case  0: break;                           // Vector  0:  No interrupt
-  case  2: break;                           // Vector  2:  ADC overflow
-  case  4: break;                           // Vector  4:  ADC timing overflow
-  case  6:                                  // Vector  6:  ADC12IFG0
-    setPWM();
-
-    /*__bic_SR_register_on_exit(LPM0_bits);   // Exit active CPU
-  case  8: break;                           // Vector  8:  ADC12IFG1
-  case 10: break;                           // Vector 10:  ADC12IFG2
-  case 12: break;                           // Vector 12:  ADC12IFG3
-  case 14: break;                           // Vector 14:  ADC12IFG4
-  case 16: break;                           // Vector 16:  ADC12IFG5
-  case 18: break;                           // Vector 18:  ADC12IFG6
-  case 20: break;                           // Vector 20:  ADC12IFG7
-  case 22: break;                           // Vector 22:  ADC12IFG8
-  case 24: break;                           // Vector 24:  ADC12IFG9
-  case 26: break;                           // Vector 26:  ADC12IFG10
-  case 28: break;                           // Vector 28:  ADC12IFG11
-  case 30: break;                           // Vector 30:  ADC12IFG12
-  case 32: break;                           // Vector 32:  ADC12IFG13
-  case 34: break;                           // Vector 34:  ADC12IFG14
-  default: break;
-  }*/
-
-    __bic_SR_register_on_exit(LPM0_bits);   // Exit active CPU
-}
-
-
-void setPWM()
-{
-
-    //PTAT equation: Vo = 6.25 mV/C + 424 mV
-    //therefore, Temp = (Vo - 0.424) / 0.00625
-
-    float analogVoltage = adcReading * (3.3 / 4096);    //convert digital reading back to analog voltage value
-
-    realTemp = ((analogVoltage - 0.424) / 0.00625);     //convert analog voltage to temperature
-
-    float difference = realTemp - desiredTemp;          //determine difference between real and desired temp
-
-    float dc_increase = difference;                     //increasing/decreasing 1% DC for every degree C off
-
-    if(difference > 2)                                  //if temp is too high
-        ccr += 262/dc_increase;                         //increase DC
-    else if(difference < -2)                            //if temp is too low
-        ccr += 262/dc_increase;                     //decrease CCR1
-
-    if(ccr < 0)
-        TA1CCR1 = 0;
-    else
-        TA1CCR1 = ccr;
-
-    if(TA1CCR1 > 250)                                   //ensure CCR1 never gets about 261 (262 is CCR0)
-        TA1CCR1 = 250;
-
-}
-
-#pragma vector=USCI_A1_VECTOR
-__interrupt void USCI_A1_ISR(void)
-
-{
-  switch(__even_in_range(UCA1IV,4))
-  {
-  case 0:break;                             // Vector 0 - no interrupt
-  case 2:                                   // Vector 2 - RXIFG
-    /*while (!(UCA1IFG & UCTXIFG));             // USCI_A0 TX buffer ready?
-    UCA1TXBUF = UCA1RXBUF;                  // TX -> RXed character
-    break;*/
-    desiredTemp = UCA1RXBUF;
-    while (!(UCA1IFG & UCTXIFG));                       //if TX buffer ready, send temp reading out thru TX
-    UCA1TXBUF = realTemp;
-    break;
-  case 4:break;                             // Vector 4 - TXIFG
-  default: break;
-  }
-}
-
-
-#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
-#pragma vector=TIMER1_A1_VECTOR
-__interrupt void TIMER1_A1_ISR(void)
-#elif defined(__GNUC__)
-void __attribute__ ((interrupt(TIMER1_A1_VECTOR))) TIMER1_A1_ISR (void)
-#else
-#error Compiler not supported!
-#endif
-{
-  switch(__even_in_range(TA1IV,14)) //testing timer interrupt vector
-  {
-    case  0: break;                          // No interrupt
-    case  2: P2OUT &= ~BIT7;                 //if CCR1 is reached, set low
-             break;
-    case  4: break;                          // CCR2 not used
-    case  6: break;                          // reserved
-    case  8: break;                          // reserved
-    case 10: break;                          // reserved
-    case 12: break;                          // reserved
-    case 14: P2OUT |= BIT7;                  // if CCR0 overflows, set high
-             break;
-    default: break;
-  }
-  TA1IV &= ~TA1IV_TA1IFG; // Clear the Timer interrupt Flag
-}
-
-
-
-
-
-
