@@ -2,19 +2,37 @@
  * Milestone 2
  * Scott Wood and David Sheppard
  *
+ * Created: 11 Novembber 2018
+ * Last Updated: 1 December 2018 - Comments
+ *
+ * Purpose: Reads in data from a PTAT and uses the info to
+ * control a fan by PWM in order to maintain a desired temperature
+ * on the PTAT.
+ *
+ * Use: The desired temperature is initialized to 20 C and can
+ * be changed by sending a number (in degrees C) over UART. The current temperature
+ * can be read by sending 0 over UART which prompts the device to send
+ * the current temperature back through the TX line.
+ *
+ * Ports:   6.0: ADC input
+ *          2.7: PWM output
+ *          4.4: TX
+ *          4.5: RX
+ *
+ * Note: some code was taken from sample code in the TI resource explorer
  */
 
 
 #include <msp430F5529.h>
 #include <math.h>
 
-float realTemp;
-float desiredTemp = 20; //initialization default
-float adcReading;
-int adcReady = 1;
-int ccr;
+float realTemp;         //temperature reading
+float desiredTemp = 20; //initialization default: 20 C
+float adcReading;       //reading from Analog-Digital Converter
+int adcReady = 1;       //1 if ADC conversion is done, else 0
+int ccr;                //value to set the TA1CCR1 to
 
-void setPWM();
+void setPWM();          //prototype for function that sets TA1CCR1 value
 
 int main(void)
 {
@@ -42,26 +60,29 @@ int main(void)
   UCA1IE |= UCRXIE;                         // Enable USCI_A0 RX interrupt
   UCA1TXBUF = 0;                            //set RX buffer to 0 for testing purposes
 
-  //PWM stuff*********************************************************************************
+  //PWM initialization************************************************************************
+  //using Timer A1
   TA1CCTL1 = CCIE;                          // CCR1 interrupt enabled for TA1
-  TA1CCR0 = 262;                            //Set the period in the Timer A Capture/Compare 0 register to 1000 us.
-  TA1CCR1 = 131;                            //The initial period in microseconds that the power is ON. It's half the time, which translates to a 50% duty cycle.
+  TA1CCR0 = 262;                            //Set the period in the Timer A CCR0 to 1000 us.
+  TA1CCR1 = 131;                            //The initial period in microseconds that the power is ON.
+                                            //It's initialized to half the time, which translates to a 50% duty cycle.
   TA1CTL = TASSEL_2 + MC_1 + ID_2 + TAIE;   //TASSEL_2 selects SMCLK as the clock source, and MC_1 tells it to count up to the value in TA0CCR0.
 
+  //ADC sampling******************************************************************************
   ADC12CTL0 = ADC12SHT02 + ADC12ON;         // Sampling time, ADC12 on
   ADC12CTL1 = ADC12SHP;                     // Use sampling timer
   ADC12IE = 0x01;                           // Enable interrupt
   ADC12CTL0 |= ADC12ENC;                    //Enable conversion
 
-  __bis_SR_register(/*LPMO + */GIE);        // LPM0 with interrupts enabled
+  __bis_SR_register(LPMO + GIE);        // LPM0 with interrupts enabled
 
   //polling for ADC values********************************************************************
   while(1)
   {
     ADC12CTL0 |= ADC12SC;                   // Sampling and conversion start
-    while(adcReady == 0){};                 //run this loop while waiting for ADC to finish conversion
+    while(adcReady == 0){};                 //Wait for ADC to finish conversion
     setPWM();                               //set PWM values to change duty cycle
-    adcReady = 0;                           //adc no longer ready
+    adcReady = 0;                           //ADC no longer ready
 
   }
 }
@@ -75,57 +96,62 @@ void __attribute__ ((interrupt(ADC12_VECTOR))) ADC12_ISR (void)
 #error Compiler not supported!
 #endif
 {
-    adcReady = 1;
-    adcReading = ADC12MEM0;
+    adcReady = 1;                           //when this interrupt fire, ADC is ready
+    adcReading = ADC12MEM0;                 //record ADC reading
 
     __bic_SR_register_on_exit(LPM0_bits);   // Exit active CPU
 }
 
-
+//set CCR1 values to change duty Cycle of PWM: Low DC = slow fan, High DC = fast fan
 void setPWM()
 {
 
+    //using the LM60CIZ PTAT
     //PTAT equation: Vo = 6.25 mV/C + 424 mV
-    //therefore, Temp = (Vo - 0.424) / 0.00625
+    //therefore, Temperature = (Vo - 0.424) / 0.00625
 
+    //calculations*********************************************************************************************
     float analogVoltage = adcReading * (3.3 / 4096);    //convert digital reading back to analog voltage value
 
     realTemp = ((analogVoltage - 0.424) / 0.00625);     //convert analog voltage to temperature
 
     float difference = realTemp - desiredTemp;          //determine difference between real and desired temp
 
+    //proportional control: change PWM based on difference in temperature**************************************
     if(difference > 1)                                  //if temp is too high
-        ccr += (difference);                         //increase DC
+        ccr += (difference);                            //increase ccr value to speed up fan
     else if(difference < -1)                            //if temp is too low
-        ccr += (difference);                     //decrease CCR1
+        ccr += (difference);                            //decrease ccr value to slow down fan (difference is already negative if realTemp is too low)
+    //else if within 1 degree, don't bother to change PWM
 
     if(ccr < 0)                 //ensure ccr never gets negative
     {
         ccr = 0;
     }
-    else if(TA1CCR1 > 250){     //ensure CCR1 never gets about 261 (262 is CCR0)
+    else if(TA1CCR1 > 250){     //ensure CCR1 never gets too close to CCR0 (CCR0 is 262)
+                                //if CCR1 is too close to CCR0, they won't both fire
         ccr = 250;
     }
 
-    TA1CCR1 = ccr;
+    TA1CCR1 = ccr;              //finally set the CCR1 value
 
 }
 
+//UART interrupt
 #pragma vector=USCI_A1_VECTOR
 __interrupt void USCI_A1_ISR(void)
 
 {
-  switch(__even_in_range(UCA1IV,4))
+  switch(__even_in_range(UCA1IV,4))         //looking for a specific interrupt case: when RX has value
   {
   case 0:break;                             // Vector 0 - no interrupt
-  case 2:                                   // Vector 2 - RXIFG
-    // Special case: if UART input is 0x00, we want it to send back the temperature reading
-    //instead of setting desired temp
+  case 2:                                   // Vector 2 - RXIFG (UART is receiving data in RX)
+    // Special case: if UART input is 0, we want it to send back the temperature reading instead of setting desired temp
     if(UCA1RXBUF == 0x00){
-        while (!(UCA1IFG & UCTXIFG));                       //if TX buffer ready, send temp reading out thru TX
-        UCA1TXBUF = realTemp;
+        while (!(UCA1IFG & UCTXIFG));       //wait for TX buffer to be ready
+        UCA1TXBUF = realTemp;               //send out temp reading
     }
-    //if UART input is not special case of 0x00, set desired temp
+    //if UART input is not special case of 0, set desired temp
     else
         desiredTemp = UCA1RXBUF;
     break;
@@ -134,7 +160,7 @@ __interrupt void USCI_A1_ISR(void)
   }
 }
 
-
+//Timer Interrupt: used for software PWM
 #if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
 #pragma vector=TIMER1_A1_VECTOR
 __interrupt void TIMER1_A1_ISR(void)
@@ -147,14 +173,14 @@ void __attribute__ ((interrupt(TIMER1_A1_VECTOR))) TIMER1_A1_ISR (void)
   switch(__even_in_range(TA1IV,14)) //testing timer interrupt vector
   {
     case  0: break;                          // No interrupt
-    case  2: P2OUT &= ~BIT7;                 //if CCR1 is reached, set low
+    case  2: P2OUT &= ~BIT7;                 //if CCR1 is reached, set output low
              break;
     case  4: break;                          // CCR2 not used
     case  6: break;                          // reserved
     case  8: break;                          // reserved
     case 10: break;                          // reserved
     case 12: break;                          // reserved
-    case 14: P2OUT |= BIT7;                  // if CCR0 overflows, set high
+    case 14: P2OUT |= BIT7;                  // if CCR0 overflows, set output high
              break;
     default: break;
   }
@@ -162,7 +188,7 @@ void __attribute__ ((interrupt(TIMER1_A1_VECTOR))) TIMER1_A1_ISR (void)
 }
 
 
-
+//Info from Resource Explorer
 
 /* --COPYRIGHT--,BSD_EX
  * Copyright (c) 2012, Texas Instruments Incorporated
