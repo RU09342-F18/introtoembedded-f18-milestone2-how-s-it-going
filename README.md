@@ -2,7 +2,7 @@
 ## Details
 Milestone 2
  * Scott Wood and David Sheppard
- * Created: 11 Novembber 2018
+ * Created: 11 November 2018
  * Last Updated: 1 December 2018 - Commented rest of code
 ## Purpose
 Reads in data from a PTAT and uses the info to control a fan by PWM in order to maintain a desired temperature on the PTAT.
@@ -28,7 +28,7 @@ Pulse width modulation is done in the software using Timer A1 in Up Mode.
  * 4.4: TX
  * 4.5: RX
  ## Block Diagram of Ciruit Setup
- <img src="block_diagram.png" width="239" height="234">
+ <img src="block_diagram.png" width="382" height="374">
 ## Notes
-* Some of the code was taken from sample code in the TI resource explorer
+* Some of the code was taken from sample code in the TI resource explorer.
 * The code is dependenty upon the MSP430G2553.h header file.
