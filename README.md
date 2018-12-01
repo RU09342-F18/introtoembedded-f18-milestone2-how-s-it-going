@@ -1,7 +1,6 @@
 # Milestone 2: Closed Loop Systems
 ## Details
-Milestone 2
- * Scott Wood and David Sheppard
+ * By Scott Wood and David Sheppard
  * Created: 11 November 2018
  * Last Updated: 1 December 2018 - Commented rest of code
 ## Purpose
