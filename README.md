@@ -28,6 +28,7 @@ Pulse width modulation is done in the software using Timer A1 in Up Mode.
  * 4.4: TX
  * 4.5: RX
  ## Block Diagram of Ciruit Setup
+ In the circuit, the votlage regulator acts as a heat source and the PTAT is pressed against it to read the temperature. The fan and regulator are supplied by a 12 VDC source and the PTAT and microprocessor recieve 3.3 VDC.
  <img src="block_diagram.png" width="382" height="374">
 
 ## Notes
