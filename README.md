@@ -27,8 +27,8 @@ Pulse width modulation is done in the software using Timer A1 in Up Mode.
  * 2.7: PWM output
  * 4.4: TX
  * 4.5: RX
- ## Block Diagram
- <img src="block_diagram.png" width="478" height="467">
+ ## Block Diagram of Ciruit Setup
+ <img src="block_diagram.png" width="239" height="234">
 ## Notes
 * Some of the code was taken from sample code in the TI resource explorer
 * The code is dependenty upon the MSP430G2553.h header file.
