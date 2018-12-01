@@ -29,6 +29,7 @@ Pulse width modulation is done in the software using Timer A1 in Up Mode.
  * 4.5: RX
  ## Block Diagram of Ciruit Setup
  <img src="block_diagram.png" width="382" height="374">
+
 ## Notes
 * Some of the code was taken from sample code in the TI resource explorer.
 * The code is dependenty upon the MSP430G2553.h header file.
