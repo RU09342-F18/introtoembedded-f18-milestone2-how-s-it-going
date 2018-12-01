@@ -17,7 +17,7 @@ The desired temperature is initialized to 20 C.
 ### Specs
 * The code is designed for the MSP430F5529 microprocessor
 * The PTAT (proportional to absolute temperature) device that the code was designed for is the LM60CIZ.
-* The PTAT equation is given as follows: Vo = 6.25 mV/C + 424 mV from <a href="http://www.ti.com/lit/ds/symlink/lm60.pdf">the datasheet</a>.
+* The PTAT equation is given as follows: V<sub>o</sub> = 6.25 mV/&#176C + 424 mV from <a href="http://www.ti.com/lit/ds/symlink/lm60.pdf">the datasheet</a>.
 ### Temperature Reading
 The temperature is read using the ADC Converter built into the microprocessor.
 ### Ports:   
